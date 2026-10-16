@@ -4,7 +4,7 @@ import os
 import warnings
 
 from langchain_core.callbacks.base import BaseCallbackHandler
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, END, StateGraph
@@ -18,7 +18,8 @@ from tools.tools_execute_sqlite import execute_sqlite_query
 from tools.tools_charts import highcharts_tool
 from tools.tools_export import export_artifacts_tool
 
-
+from metrics.definitions import detect_ambiguous
+from langgraph.graph import END
 from langchain_mcp_adapters.client import MultiServerMCPClient
 import asyncio
 
@@ -73,6 +74,30 @@ async def get_mcp_tools():
     except Exception as e:
         print(f"Warning: Failed to load MCP tools: {e}")
         return []
+
+def check_ambiguity(state: MessagesState) -> str:
+    """用户消息级消歧：在模型执行前，检查最新一条用户消息是否含歧义指标。"""
+    for m in reversed(state.messages):
+        if isinstance(m, HumanMessage):
+            return "clarify" if len(detect_ambiguous(m.content)) > 1 else "llm_agent"
+    return "llm_agent"
+
+
+def clarify(state: MessagesState) -> dict:
+    """产出澄清问题并结束本轮，不依赖 LLM 自觉反问。"""
+    for m in reversed(state.messages):
+        if isinstance(m, HumanMessage):
+            hits = detect_ambiguous(m.content)
+            if len(hits) > 1:
+                formulas = "\n".join(f"- {h.canonical}：{h.formula}" for h in hits)
+                question = (
+                    "您的问题里「毛利率」存在多个口径，为避免算错，请先确认要哪一个：\n"
+                    f"{formulas}\n"
+                    "请回复具体口径名称（如“销售毛利率”），我再继续计算。"
+                )
+                return {"messages": [AIMessage(content=question)]}
+    return {"messages": [AIMessage(content="请说明要计算的指标口径。")]}
+
 
 
 # 安全地加载 MCP 工具，失败时不阻塞启动
@@ -178,10 +203,14 @@ def create_agent(callback_handler: BaseCallbackHandler, model_name: str) -> Stat
         return {"messages": [llm_with_tools.invoke([sys_msg] + state.messages)]}
 
     builder = StateGraph(MessagesState)
+    builder.add_node("clarify", clarify)
     builder.add_node("llm_agent", llm_agent)
     builder.add_node("tools", ToolNode(tools))
 
-    builder.add_edge(START, "llm_agent")
+    builder.add_conditional_edges(
+        START, check_ambiguity, {"clarify": "clarify", "llm_agent": "llm_agent"}
+    )
+    builder.add_edge("clarify", END)
     builder.add_conditional_edges("llm_agent", tools_condition)
     builder.add_edge("tools", "llm_agent")
     # builder.add_edge("llm_agent", END)
