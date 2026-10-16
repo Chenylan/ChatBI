@@ -3,7 +3,7 @@ import random
 from faker import Faker
 import os
 current_file_dir = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH    = os.path.join(current_file_dir, "example.db")  # 替换为你的数据库文件路径
+DATABASE_PATH         = os.path.join(current_file_dir, "example.db")  # 替换为你的数据库文件路径
 # SQLite 数据库文件路径
 database_path = DATABASE_PATH
 
@@ -45,9 +45,6 @@ def create_tables():
             ORDER_ID INTEGER,
             PAYMENT_DATE TEXT,
             AMOUNT REAL,
-            收入 REAL,
-            成本 REAL,
-            毛利额 REAL,
             FOREIGN KEY (ORDER_ID) REFERENCES ORDER_DETAILS(ORDER_ID)
         );
         """,
@@ -156,14 +153,10 @@ def generate_sample_data(num_customers=10, num_orders=10, num_products=10, num_i
     for i in range(1, num_orders + 1):
         payment_date = fake.date_this_year().isoformat()
         amount = round(random.uniform(50, 500), 2)
-        # 收入/成本/毛利额：用于「毛利率」口径测试
-        revenue = amount                                            # 收入 = 实收金额
-        cost = round(revenue * random.uniform(0.55, 0.90), 2)       # 成本
-        gross_profit = round(revenue - cost, 2)                     # 毛利额 = 收入 - 成本
 
         cursor.execute(
-            "INSERT INTO PAYMENTS (PAYMENT_ID, ORDER_ID, PAYMENT_DATE, AMOUNT, 收入, 成本, 毛利额) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (None, i, payment_date, amount, revenue, cost, gross_profit)
+            "INSERT INTO PAYMENTS (PAYMENT_ID, ORDER_ID, PAYMENT_DATE, AMOUNT) VALUES (?, ?, ?, ?)",
+            (None, i, payment_date, amount)
         )
 
     # 更新 CUSTOMER_DETAILS 的购买行为字段

@@ -22,7 +22,7 @@ os.environ["STREAMLIT_SERVER_RUNNING"] = "false"
 
 def log_setting():
     """配置日志"""
-    log_path = Path(os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log"))
+    log_path = os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {module}.{function} {message}"
     logger.add(log_path, format=log_format, rotation="200 MB")
