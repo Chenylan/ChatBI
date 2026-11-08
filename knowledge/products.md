@@ -1,3 +1,8 @@
+---
+title: PRODUCTS 产品表结构
+category: schema
+---
+
 **Table 4: STREAM_HACKATHON.STREAMLIT.PRODUCTS** (Stores product information)
 
 This table contains information about the products available for purchase on the platform, including their name, category, and price.

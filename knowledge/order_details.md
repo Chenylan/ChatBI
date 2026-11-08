@@ -1,3 +1,8 @@
+---
+title: ORDER_DETAILS 订单表结构
+category: schema
+---
+
 **Table 2: STREAM_HACKATHON.STREAMLIT.ORDER_DETAILS** (Stores order information)
 
 This table contains information about orders placed by customers, including the date and total amount of each order.

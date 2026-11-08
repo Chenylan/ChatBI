@@ -1,3 +1,8 @@
+---
+title: CUSTOMER_DETAILS 客户表结构
+category: schema
+---
+
 **Table 1: STREAM_HACKATHON.STREAMLIT.CUSTOMER_DETAILS** (Stores customer information)
 
 This table contains the personal information of customers who have made purchases on the platform, including purchase behavior analytics.

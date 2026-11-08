@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 # 环境变量和密钥
 .env
 .env.local
@@ -52,12 +55,28 @@ graph_*.png
 # *.sqlite
 # *.sqlite3
 
-# 向量数据库（可选，根据需要取消注释）
-chroma_langchain_db/
-chroma_langchain_db/chroma.sqlite3
-chroma_langchain_db/401e6c37-9e6d-49e1-8395-1c7f18d00973
+# 记忆持久化数据库（运行期生成）
+chat_memory.sqlite3
+
+# 向量数据库
+# schema 索引（构建产物，CI 重建后部署，勿提交）
+chroma_schema_db/
+# 长期记忆（运行时状态，勿提交、勿被 CI 覆盖）
+chroma_memory_db/
 
 # 其他
 pplx.py
 app.py
 .ruff_cache/
+
+# 工具/本地配置（勿提交）
+.agentlens/
+backend/.agentlens/
+.claude/settings.local.json
+
+# 误放进来的嵌套文档仓库（权威源在独立仓库 chatbi-knowledge，勿提交）
+chatbi-knowledge/
+
+# 运行时生成的 SQLite 数据库（勿提交）
+tools/metrics.db
+tools/user_permissions.db

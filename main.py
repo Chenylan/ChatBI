@@ -3,6 +3,7 @@ import streamlit as st
 from agent import MessagesState, create_agent
 from ui.sqlitechat_ui import StreamlitUICallbackHandler, message_func
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from tools.access_control import current_user
 
 # 忽略 "invalid escape sequence" 类型的语法警告
 warnings.filterwarnings("ignore", category=SyntaxWarning, message="invalid escape sequence.*")
@@ -80,6 +81,16 @@ model = st.radio(
     horizontal=True,
 )
 st.session_state["model"] = model
+
+# 表级权限演示：选择「当前用户」来模拟登录身份。实际生产环境应改为从登录态
+# （如 SSO / JWT）解析出 user_id，而不是让用户自己下拉选择。
+user_options = {
+    "admin（全部表）": "admin",
+    "alice（订单/客户/商品/行为）": "alice",
+    "bob（支付/交易/订单/商品）": "bob",
+}
+user_label = st.selectbox("当前用户（表级权限）", options=list(user_options.keys()), index=0)
+current_user.set(user_options[user_label])  # 注入身份，供 execute_sqlite_query 做权限校验
 
 if "assistant_response_processed" not in st.session_state:
     st.session_state["assistant_response_processed"] = True  # Initialize to True
@@ -290,9 +301,21 @@ if (
         # Start loading animation
         callback_handler.start_loading_message()
 
-        messages = [HumanMessage(content=user_input_content)]
+        # 记忆管理兼容：从 session_state 构造完整历史（原实现依赖 checkpointer 累积，现已移除）。
+        # 跳过初始欢迎语，只保留真实的 user/assistant 消息。
+        _initial_contents = {"Hi!", "我是 ChatBI 智能助手，已接入 SQLite，快来聊聊吧 🔍"}
+        history = []
+        for m in st.session_state["messages"]:
+            content = m.get("content", "")
+            if content in _initial_contents:
+                continue
+            role = m.get("role")
+            if role == "user":
+                history.append(HumanMessage(content=content))
+            elif role == "assistant":
+                history.append(AIMessage(content=content))
 
-        state = MessagesState(messages=messages)
+        state = MessagesState(messages=history)
         result = react_graph.invoke(state, config=config, debug=True)
         # st.sidebar.write(f"result: {result}")
         

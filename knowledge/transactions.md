@@ -1,3 +1,8 @@
+---
+title: TRANSACTIONS 交易表结构
+category: schema
+---
+
 **Table 5: STREAM_HACKATHON.STREAMLIT.TRANSACTIONS** (Stores transaction information)
 
 This table contains information about individual transactions that occur when customers purchase products, including the associated order, product, quantity, and price.

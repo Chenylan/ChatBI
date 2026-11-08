@@ -1,3 +1,8 @@
+---
+title: USER_INTERACTIONS 用户交互表结构
+category: schema
+---
+
 **Table 6: STREAM_HACKATHON.STREAMLIT.USER_INTERACTIONS** (Stores user interaction data)
 
 This table contains information about user interactions with the website, including clicks, searches, cart additions, and other behavioral events. This data is used for user interaction analysis to identify conversion barriers and UX optimization opportunities.

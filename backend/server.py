@@ -5,6 +5,7 @@ ChatBI 后端服务器
 """
 import os
 import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
@@ -22,10 +23,17 @@ os.environ["STREAMLIT_SERVER_RUNNING"] = "false"
 
 def log_setting():
     """配置日志"""
-    log_path = os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log")
+    log_path = Path(os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log"))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {module}.{function} {message}"
     logger.add(log_path, format=log_format, rotation="200 MB")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：启动时配置日志（替代已被移除的 on_startup 参数）。"""
+    log_setting()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -34,7 +42,7 @@ def create_app() -> FastAPI:
         title="ChatBI API",
         description="ChatBI 智能数据对话助手 API",
         version="1.0.0",
-        on_startup=[log_setting]
+        lifespan=lifespan,
     )
 
     register_middleware(_app)
