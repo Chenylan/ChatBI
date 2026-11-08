@@ -59,8 +59,7 @@ graph_*.png
 chat_memory.sqlite3
 
 # 向量数据库
-# schema 索引（构建产物，CI 重建后部署，勿提交）
-chroma_schema_db/
+# schema 索引：本地用 text-embedding-v3 构建后提交（国内 DashScope 海外 CI 跑不通，故不在 CI 重建）
 # 长期记忆（运行时状态，勿提交、勿被 CI 覆盖）
 chroma_memory_db/
 
