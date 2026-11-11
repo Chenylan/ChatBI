@@ -1,0 +1,38 @@
+{
+  "model": "qwen-plus",
+  "results": [
+    {
+      "id": "q001",
+      "question": "订单表里一共有多少条订单记录？",
+      "difficulty": "easy",
+      "pred_sql": "SELECT COUNT(*) FROM ORDER_DETAILS",
+      "final_answer": "1. 数据来源表：ORDER_DETAILS\n2. 计算过程：SELECT COUNT(*) FROM ORDER_DETAILS\n3. 查询结果：30\n4. 结论：订单表（ORDER_DETAILS）中一共有30条订单记录。",
+      "ex": true,
+      "tool_success": true,
+      "format_compliance": true,
+      "ungrounded_numbers": []
+    },
+    {
+      "id": "q002",
+      "question": "所有商品的平均价格是多少？",
+      "difficulty": "easy",
+      "pred_sql": "SELECT AVG(PRICE) FROM PRODUCTS;",
+      "final_answer": "1. 数据来源表：PRODUCTS\n2. 计算过程：SELECT AVG(PRICE) FROM PRODUCTS;\n3. 查询结果：503.988\n4. 结论：所有商品的平均价格为503.99元（四舍五入到小数点后两位）。这个平均值反映了平台上所有商品价格的中心趋势，可以帮助了解整体定价水平。",
+      "ex": true,
+      "tool_success": true,
+      "format_compliance": true,
+      "ungrounded_numbers": []
+    },
+    {
+      "id": "q003",
+      "question": "2024年一共有多少笔订单？",
+      "difficulty": "easy",
+      "pred_sql": "SELECT COUNT(*) FROM ORDER_DETAILS WHERE strftime('%Y', ORDER_DATE) = '2024'",
+      "final_answer": "1. 数据来源表：ORDER_DETAILS\n2. 计算过程：SELECT COUNT(*) FROM ORDER_DETAILS WHERE strftime('%Y', ORDER_DATE) = '2024'\n3. 查询结果：4\n4. 结论：2024年一共有4笔订单。",
+      "ex": true,
+      "tool_success": true,
+      "format_compliance": true,
+      "ungrounded_numbers": []
+    }
+  ]
+}

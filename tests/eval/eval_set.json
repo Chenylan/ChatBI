@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "name": "ChatBI starter eval set",
+    "db": "tools/example.db",
+    "format": "Spider-like: id / difficulty / question / gold_sql",
+    "generated": "2026-10-21",
+    "note": "example.db 中 ORDER_DETAILS 仅 4 条落在 2024 年，PAYMENT_DATE 全部在 2025 年。涉及时间的问题请以 2025 年数据为主，避免『2024年各月』这类极度稀疏的口径。"
+  },
+  "questions": [
+    {
+      "id": "q001",
+      "difficulty": "easy",
+      "question": "订单表里一共有多少条订单记录？",
+      "gold_sql": "SELECT COUNT(*) FROM ORDER_DETAILS"
+    },
+    {
+      "id": "q002",
+      "difficulty": "easy",
+      "question": "所有商品的平均价格是多少？",
+      "gold_sql": "SELECT AVG(PRICE) FROM PRODUCTS"
+    },
+    {
+      "id": "q003",
+      "difficulty": "easy",
+      "question": "2024年一共有多少笔订单？",
+      "gold_sql": "SELECT COUNT(*) FROM ORDER_DETAILS WHERE ORDER_DATE LIKE '2024%'"
+    },
+    {
+      "id": "q004",
+      "difficulty": "easy",
+      "question": "每个商品类别各有多少种商品？",
+      "gold_sql": "SELECT CATEGORY, COUNT(*) FROM PRODUCTS GROUP BY CATEGORY"
+    },
+    {
+      "id": "q005",
+      "difficulty": "medium",
+      "question": "订单总金额最高的前3位客户是谁？列出客户姓名和对应总金额。",
+      "gold_sql": "SELECT c.FIRST_NAME, c.LAST_NAME, SUM(o.TOTAL_AMOUNT) AS total FROM CUSTOMER_DETAILS c JOIN ORDER_DETAILS o ON c.CUSTOMER_ID = o.CUSTOMER_ID GROUP BY c.CUSTOMER_ID ORDER BY total DESC LIMIT 3"
+    },
+    {
+      "id": "q006",
+      "difficulty": "medium",
+      "question": "按销售数量排名，销量最高的前5个商品是哪些？列出商品名和销售总数量。",
+      "gold_sql": "SELECT p.PRODUCT_NAME, SUM(t.QUANTITY) AS total_qty FROM TRANSACTIONS t JOIN PRODUCTS p ON t.PRODUCT_ID = p.PRODUCT_ID GROUP BY t.PRODUCT_ID ORDER BY total_qty DESC LIMIT 5"
+    },
+    {
+      "id": "q007",
+      "difficulty": "medium",
+      "question": "每个商品类别的总销售金额分别是多少？列出类别和总金额。",
+      "gold_sql": "SELECT p.CATEGORY, SUM(t.QUANTITY * t.PRICE) AS revenue FROM TRANSACTIONS t JOIN PRODUCTS p ON t.PRODUCT_ID = p.PRODUCT_ID GROUP BY p.CATEGORY"
+    },
+    {
+      "id": "q008",
+      "difficulty": "medium-hard",
+      "question": "购买商品总数量超过15件的订单有哪些？列出订单号和总数量。",
+      "gold_sql": "SELECT ORDER_ID, SUM(QUANTITY) AS total_qty FROM TRANSACTIONS GROUP BY ORDER_ID HAVING SUM(QUANTITY) > 15 ORDER BY ORDER_ID"
+    },
+    {
+      "id": "q009",
+      "difficulty": "hard",
+      "question": "销售额最高的那个商品是什么？给出商品名。",
+      "gold_sql": "SELECT p.PRODUCT_NAME FROM TRANSACTIONS t JOIN PRODUCTS p ON t.PRODUCT_ID = p.PRODUCT_ID GROUP BY t.PRODUCT_ID ORDER BY SUM(t.QUANTITY * t.PRICE) DESC LIMIT 1"
+    },
+    {
+      "id": "q010",
+      "difficulty": "hard",
+      "question": "2025年每个月的订单总金额分别是多少？按月列出月份和总金额。",
+      "gold_sql": "SELECT strftime('%m', ORDER_DATE) AS month, SUM(TOTAL_AMOUNT) AS total FROM ORDER_DETAILS WHERE ORDER_DATE LIKE '2025%' GROUP BY month ORDER BY month"
+    }
+  ]
+}

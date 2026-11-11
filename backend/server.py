@@ -5,6 +5,7 @@ ChatBI 后端服务器
 """
 import os
 import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
@@ -22,10 +23,38 @@ os.environ["STREAMLIT_SERVER_RUNNING"] = "false"
 
 def log_setting():
     """配置日志"""
-    log_path = os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log")
+    log_path = Path(os.getenv("LOG_PATH", Path(__file__).resolve().parent.parent / "logs" / "server.log"))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_format = "{time:YYYY-MM-DD HH:mm:ss.SSS} {level} {module}.{function} {message}"
     logger.add(log_path, format=log_format, rotation="200 MB")
+
+
+def init_runtime_stores():
+    """启动时初始化运行时数据（权限库 + 口径库）。
+
+    权限表（user_table_acl）与口径表（metric_definitions）都存放在 PostgreSQL
+    （public schema），这里在服务启动时幂等建表 + 写入示例数据，避免首次查询时
+    因表未初始化而报「当前用户未授权」或口径字典为空。
+    """
+    try:
+        from tools.access_control import init_permission_db
+        init_permission_db(seed=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"权限库初始化失败（请确认 PostgreSQL 已启动、连接参数正确）：{e}")
+
+    try:
+        from metrics.store import _init as init_metrics_db
+        init_metrics_db(seed=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"口径库初始化失败（请确认 PostgreSQL 已启动、连接参数正确）：{e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：启动时配置日志、初始化运行时数据。"""
+    log_setting()
+    init_runtime_stores()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -34,7 +63,7 @@ def create_app() -> FastAPI:
         title="ChatBI API",
         description="ChatBI 智能数据对话助手 API",
         version="1.0.0",
-        on_startup=[log_setting]
+        lifespan=lifespan,
     )
 
     register_middleware(_app)

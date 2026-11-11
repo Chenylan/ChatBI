@@ -75,16 +75,16 @@ ChatBI/
 │   └── package.json
 ├── agent.py                # Agent 核心逻辑
 ├── tools/                  # 工具模块目录
-│   ├── tools_execute_sqlite.py    # SQLite 查询工具
-│   ├── tools_text2sqlite.py   # 自然语言转 SQL 工具
-│   ├── tools_rag.py              # 数据库 schema 检索工具
+│   ├── tools_execute_sql.py       # PostgreSQL 查询工具
+│   ├── tools_text2sql.py          # 自然语言转 SQL 工具
+│   ├── tools_rag.py               # 数据库 schema 检索工具（pgvector）
 │   ├── tools_charts.py            # 图表生成工具
 │   ├── mcp_time.py               # MCP 时间工具服务端
 │   ├── generate_sqlite_data.py   # 生成示例数据库和数据
-│   └── ingest_chromadb.py        # 生成 embedding 并写入 chromadb
+│   └── ingest_pgvector.py         # 生成 embedding 并写入 pgvector
 ├── docs/                   # 数据库表结构说明
+├── knowledge/              # 知识文档（RAG 索引语料）
 ├── sql/                    # 数据库建表 SQL 文件
-├── chroma_langchain_db/    # 向量数据库存储目录
 ├── assets/                 # 项目图片资源文件夹
 ├── main.py                 # Streamlit 应用入口（已弃用，保留用于兼容）
 └── ui/                     # Streamlit UI 组件（已弃用，保留用于兼容）
@@ -160,14 +160,14 @@ VITE_API_BASE_URL=http://localhost:8000
 
 详细说明请参考 [ENV_CONFIG.md](ENV_CONFIG.md)
 
-#### 5. 初始化向量数据库
+#### 5. 初始化向量数据库（pgvector）
 
-生成 Embedding 并写入向量数据库：
+向量库已迁移到 PostgreSQL + pgvector。先确保 PG 已启动、并已 `CREATE EXTENSION vector`，然后生成 Embedding 写入：
 ```bash
-cd tools
-python ingest_chromadb.py
-cd ..
+python tools/ingest_pgvector.py
 ```
+
+> 业务数据也存 PostgreSQL（public schema），可由 `python tools/migrate_sqlite_to_pg.py` 从示例库一次性导入。
 
 #### 6. 生成示例数据库（可选）
 
