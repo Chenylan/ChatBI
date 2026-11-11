@@ -15,8 +15,8 @@ from langchain_core.messages import BaseMessage
 from memory_manager import trim_messages
 
 from tools.tools_rag import retriever_tool, search
-from tools.tools_text2sqlite import text2sqlite_tool, get_time_by_timezone
-from tools.tools_execute_sqlite import execute_sqlite_query
+from tools.tools_text2sql import text2sql_tool, get_time_by_timezone
+from tools.tools_execute_sql import execute_sql_query
 from tools.tools_charts import highcharts_tool
 from tools.tools_export import export_artifacts_tool
 from metrics.definitions import detect_ambiguous, format_metric_dict
@@ -82,7 +82,7 @@ try:
 except Exception as e:
     print(f"Warning: Failed to initialize MCP tools: {e}")
     mcp_tools = []
-tools = [retriever_tool, search, text2sqlite_tool, highcharts_tool, execute_sqlite_query, export_artifacts_tool]
+tools = [retriever_tool, search, text2sql_tool, highcharts_tool, execute_sql_query, export_artifacts_tool]
 tools = tools + mcp_tools
 
 @dataclass
@@ -124,16 +124,16 @@ def get_model_configurations():
         )
     }
 
-_BASE_SYS_PROMPT = """You're an AI assistant specializing in data analysis with Sqlite SQL.
+_BASE_SYS_PROMPT = """You're an AI assistant specializing in data analysis with PostgreSQL SQL.
     # You MUST answer data questions by actually calling the tools — never describe what you would do.
     # 禁止输出"让我执行SQL查询…"这类只描述不做事的占位语；一旦需要查数，必须立刻调用
     ##在输出sql查询语句时候不要用别名，例如只输出SELECT COUNT(*) FROM ORDER_DETAILS;不要写成SELECT COUNT(*) AS order_count FROM ORDER_DETAILS;
-    # execute_sqlite_query（需要时先用 database_schema_rag 查 schema、用 text2sqlite_query 生成 SQL）。
+    # execute_sql_query（需要时先用 database_schema_rag 查 schema、用 text2sql_query 生成 SQL）。
     Remember first get the schema of the table by using the tool "database_schema_rag" if needed.
     You have access to the following tools:
     - database_schema_rag: This tool allows you to search for database schema details when needed to generate the SQL code.
-    - text2sqlite_query: This tool allows you to convert natural language text to a SQLite query.
-    - execute_sqlite_query: This tool allows you to execute a SQLite query on a fixed database and return the results as JSON. Use this tool to interact with the SQLite database.
+    - text2sql_query: This tool allows you to convert natural language text to a PostgreSQL query.
+    - execute_sql_query: This tool allows you to execute a PostgreSQL query on a fixed database and return the results as JSON. Use this tool to query the database.
     - high_charts_json: This tool allows you to generate Highcharts JSON config from a list of numbers and chart type. IMPORTANT: When the user asks to draw a chart, graph, or visualization (like "画图", "画出", "图表", "可视化"), you MUST:
       1. First execute a SQL query to get the data
       2. Extract the numeric data from the query results
@@ -147,7 +147,7 @@ _BASE_SYS_PROMPT = """You're an AI assistant specializing in data analysis with 
     IMPORTANT — 最终答案的呈现格式（用于防止凭空编造数据）：
     每次回答数据类问题时，最终答案必须按以下顺序分节列出，缺一不可：
     1. 数据来源表：列出本次查询实际用到的表名（FROM / JOIN 涉及的所有表）。
-    2. 计算过程：粘贴你实际执行、且由 execute_sqlite_query 工具返回的 SQL 语句。
+    2. 计算过程：粘贴你实际执行、且由 execute_sql_query 工具返回的 SQL 语句。
     3. 查询结果：列出工具返回的原始数据（关键行或数值）。
     4. 结论：基于上述结果得出的解读。
     硬性要求：

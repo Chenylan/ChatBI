@@ -1,22 +1,19 @@
-import os
-
 from langchain.tools.retriever import create_retriever_tool
 from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_community.vectorstores import Chroma
+from langchain_postgres import PGVector
 
 from tools.embeddings import get_embeddings
+from tools.pg import PGVECTOR_CONNECTION
 
 search = DuckDuckGoSearchRun()
 
-current_file_dir = os.path.dirname(os.path.abspath(__file__))
-# 统一使用项目根目录的向量数据库路径
-upper_dir = os.path.dirname(current_file_dir)  # 项目根目录
-CHROMADB_PATH = os.path.join(upper_dir, "chroma_schema_db")
-
-vector_store = Chroma(
+# schema 检索向量库：从 Chroma 本地文件迁移到 PostgreSQL + pgvector。
+# 索引不再随代码提交，改为直接写共享 PG 库（重建见 tools/ingest_pgvector.py）。
+vector_store = PGVector(
+    embeddings=get_embeddings(),
     collection_name="example_collection",
-    embedding_function=get_embeddings(),
-    persist_directory=CHROMADB_PATH,
+    connection=PGVECTOR_CONNECTION,
+    use_jsonb=True,
 )
 
 retriever_tool = create_retriever_tool(

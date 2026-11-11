@@ -32,7 +32,7 @@ description: 让 LLM 数据 Agent 的最终答案「落地」到真实查询，�
 return {"status": "success", "result": {"query": query, "columns": columns, "rows": rows}}
 ```
 
-这样最终答案的「计算过程」段贴的才是模型真正跑过的那条 SQL，而不是模型脑补的一条。本项目对应 [tools/tools_execute_sqlite.py:316-317](../../../tools/tools_execute_sqlite.py#L316-L317)。
+这样最终答案的「计算过程」段贴的才是模型真正跑过的那条 SQL，而不是模型脑补的一条。本项目对应 [tools/tools_execute_sql.py:35-38](../../../tools/tools_execute_sql.py#L35-L38)。
 
 ## 评审/自测清单（发现幻觉的检查点）
 
@@ -53,5 +53,5 @@ return {"status": "success", "result": {"query": query, "columns": columns, "row
 ## 本仓库参考实现
 
 - 系统提示词（四段式 + 硬性规则）：[agent.py:146-155](../../../agent.py#L146-L155)
-- SQL 回显：`execute_sqlite_query` 成功返回带 `query`（[tools/tools_execute_sqlite.py:316-317](../../../tools/tools_execute_sqlite.py#L316-L317)）
+- SQL 回显：`execute_sql_query` 成功返回带 `query`（[tools/tools_execute_sql.py:35-38](../../../tools/tools_execute_sql.py#L35-L38)）
 - 评测落地：格式合规 + 数值落地启发式指标（[tests/eval/run_eval.py](../../../tests/eval/run_eval.py) 的 `_format_compliance` / `_numeric_grounding_violations`）

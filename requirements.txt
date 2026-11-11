@@ -24,3 +24,8 @@ tqdm>=4.67.1
 python-dotenv
 sqlglot>=25.0.0
 
+# PostgreSQL + pgvector（业务库、权限库、口径库、向量库迁到 Postgres）
+psycopg2-binary>=2.9.9
+pgvector>=0.2.5
+langchain-postgres==0.0.11
+

@@ -82,7 +82,7 @@ class AgentToolExecutor:
         builder.add_node("tools", AgentToolExecutor(tools, max_retries=3))
     """
 
-    # 结果集行数兜底阈值，与 tools.tools_execute_sqlite.MAX_ROWS 保持一致
+    # 结果集行数兜底阈值，与 tools.db_query.BaseSqlQueryTool.MAX_ROWS 保持一致
     MAX_ROWS = 1000
 
     def __init__(self, tools: List[BaseTool], max_retries: int = 3, backoff_base: int = 2):
@@ -178,7 +178,7 @@ class AgentToolExecutor:
         if isinstance(output, dict):
             if output.get("status") in ("no_data", "not_found", "empty"):
                 return True
-            # execute_sqlite_query 的空结果：{"status":"success","result":{"rows":[]}}
+            # execute_sql_query 的空结果：{"status":"success","result":{"rows":[]}}
             result = output.get("result")
             if isinstance(result, dict) and result.get("rows") == []:
                 return True

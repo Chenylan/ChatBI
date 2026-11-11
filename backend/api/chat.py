@@ -22,7 +22,8 @@ from backend.api.callback import StreamingCallbackHandler
 from agentlens.adapters.langgraph import AgentLensCallbackHandler
 from memory_manager import MemoryManager
 from tools.access_control import current_user
-from tools.schema_introspection import DATABASE_PATH, get_sqlite_schema
+from tools.schema_introspection import get_pg_schema
+from tools.pg import PG_DATABASE
 
 router = APIRouter()
 
@@ -118,7 +119,7 @@ async def stream_agent_response(query: str, session_id: str, request_id: str, mo
         def run_agent():
             try:
                 # 表级权限：把当前用户身份注入 ContextVar。
-                # 这里在「真正跑 graph 的线程」里 set，execute_sqlite_query 工具就能 get 到，
+                # 这里在「真正跑 graph 的线程」里 set，execute_sql_query 工具就能 get 到，
                 # 从而按 user_table_acl 拦截该用户无权访问的表。
                 current_user.set(user_id or "anonymous")
                 print(f"[DEBUG] Starting agent execution for query: {query[:50]}...")
@@ -369,9 +370,9 @@ async def get_schema():
     """
     获取当前数据源下所有表的结构明细（表名 + 字段 + 类型 + 行数）。
 
-    供前端「数据表明细」页面展示；与 execute_sqlite_query 共用同一个数据源，
+    供前端「数据表明细」页面展示；与 execute_sql_query 共用同一个数据源（PostgreSQL），
     因此这里看到的就是自助问数真正在查的那些表。
     """
-    tables = get_sqlite_schema()
-    return {"database": os.path.basename(DATABASE_PATH), "tables": tables}
+    tables = get_pg_schema()
+    return {"database": PG_DATABASE, "tables": tables}
 

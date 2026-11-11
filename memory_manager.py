@@ -10,8 +10,8 @@
     - 不依赖 LangGraph 的 checkpointer（进程内存、易失），改为显式"加载 → 调用 → 持久化"。
     - 所有会调用外部服务（LLM / embedding）的地方都支持注入，便于单元测试：
         MemoryManager(llm=..., embeddings=...) 传入 fake 即可离线测试。
-    - 存储路径可配置，默认放在项目根目录；长期记忆向量库独立存于 chroma_memory_db/，
-      与 schema 索引（chroma_schema_db/）隔离，避免 CI 重建索引时覆盖运行时记忆。
+    - 长期记忆与 schema 索引都已迁移到 PostgreSQL + pgvector，用不同 collection 隔离
+      （memory_collection 与 example_collection），重建 schema 索引不会覆盖运行时记忆。
 """
 
 import hashlib
@@ -296,18 +296,21 @@ class SemanticMemoryStore:
     id 由 (kind + content) 做哈希，重复写入时复用计数 +1，实现"越用越优先"。
     """
 
-    def __init__(self, chroma_path: str, collection_name: str = "memory_collection", embeddings: Optional[Embeddings] = None):
-        # 延迟导入 Chroma，避免测试（注入 fake embeddings）时触发 chromadb 模型下载等副作用
-        from langchain_community.vectorstores import Chroma
+    def __init__(self, chroma_path: str = "", collection_name: str = "memory_collection", embeddings: Optional[Embeddings] = None):
+        # 向量库已从 Chroma 迁移到 PostgreSQL + pgvector。chroma_path 参数保留仅为
+        # 兼容旧调用（MemoryManager 仍按旧签名传参），实际不再使用本地目录。
+        from langchain_postgres import PGVector
+        from tools.pg import PGVECTOR_CONNECTION
 
         if embeddings is None:
             from tools.embeddings import get_embeddings
             embeddings = get_embeddings()
 
-        self.vector_store = Chroma(
+        self.vector_store = PGVector(
+            embeddings=embeddings,
             collection_name=collection_name,
-            embedding_function=embeddings,
-            persist_directory=chroma_path,
+            connection=PGVECTOR_CONNECTION,
+            use_jsonb=True,
         )
 
     @staticmethod
@@ -319,14 +322,14 @@ class SemanticMemoryStore:
         memory_id = self._memory_id(kind, content)
         now = time.time()
 
-        # 查重：存在则累加复用计数，否则记为首次
+        # 查重：存在则复用计数 +1（PGVector 用 get_by_ids 返回 List[Document]）
         try:
-            existing = self.vector_store.get([memory_id])
+            existing_docs = self.vector_store.get_by_ids([memory_id])
         except Exception:
-            existing = None
+            existing_docs = []
         reuse_count = 1
-        if existing and existing.get("ids"):
-            reuse_count = int((existing.get("metadatas") or [{}])[0].get("reuse_count", 0) or 0) + 1
+        if existing_docs:
+            reuse_count = int((existing_docs[0].metadata or {}).get("reuse_count", 0) or 0) + 1
 
         meta = {
             "kind": kind,
@@ -336,10 +339,13 @@ class SemanticMemoryStore:
         }
         doc = Document(page_content=content, metadata=meta)
 
-        if existing and existing.get("ids"):
-            self.vector_store.update_document(memory_id, doc)
-        else:
-            self.vector_store.add_documents([doc], ids=[memory_id])
+        if existing_docs:
+            # PGVector 没有 update_document，用「删旧 + 写新」实现同 id 更新（复用计数累加）
+            try:
+                self.vector_store.delete([memory_id])
+            except Exception:
+                pass
+        self.vector_store.add_documents([doc], ids=[memory_id])
 
     def recall(self, query: str, top_k: int = 5) -> List[str]:
         """按 query 召回 top_k 条长期记忆，返回记忆文本列表（按加权得分降序）。"""

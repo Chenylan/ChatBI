@@ -9,7 +9,7 @@
 > - 接口实现：[backend/api/chat.py](../backend/api/chat.py)
 > - Agent 图：[agent.py](../agent.py)
 > - 工具执行：[tools/tool_executor.py](../tools/tool_executor.py)
-> - SQL 执行：[tools/tools_execute_sqlite.py](../tools/tools_execute_sqlite.py)
+> - SQL 执行：[tools/tools_execute_sql.py](../tools/tools_execute_sql.py)
 > - 记忆管理：[memory_manager.py](../memory_manager.py)
 
 ---
@@ -161,15 +161,15 @@ context += trim_messages(state.messages)           # 裁剪后的历史（含本
 
 这一步**不是后端硬编码解析**，而是模型根据系统提示词和工具描述自主决策。系统提示词（[agent.py](../agent.py) 的 `sys_msg`）明确要求：
 
-> 必须真正调用工具查数，禁止只说"我会执行 SQL"；需要时先用 `database_schema_rag` 查 schema、再用 `text2sqlite_query` 生成 SQL、最后用 `execute_sqlite_query` 执行。
+> 必须真正调用工具查数，禁止只说"我会执行 SQL"；需要时先用 `database_schema_rag` 查 schema、再用 `text2sql_query` 生成 SQL、最后用 `execute_sql_query` 执行。
 
 绑定给模型的工具（`tools` 列表）：
 
 | 工具 | 作用 |
 |---|---|
 | `database_schema_rag` | 向量检索表结构 / schema 说明 |
-| `text2sqlite_query` | 把自然语言转成 SQLite SQL |
-| `execute_sqlite_query` | 真正执行 SQL 并返回结果 |
+| `text2sql_query` | 把自然语言转成 PostgreSQL SQL |
+| `execute_sql_query` | 真正执行 SQL 并返回结果 |
 | `high_charts_json` | 把数字转成 Highcharts 图表配置 |
 | `export_artifacts_tool` | 导出产物 |
 | `search`（DuckDuckGo） | 联网搜索 |
@@ -180,8 +180,8 @@ context += trim_messages(state.messages)           # 裁剪后的历史（含本
 ```
 模型读 sys_msg + 工具描述
   └─> 调 database_schema_rag("order 金额 字段")     # 拿到表结构
-  └─> 调 text2sqlite_query("近7天订单金额", schema)  # 生成 SELECT ... 
-  └─> 调 execute_sqlite_query(SQL)                  # 真正执行
+  └─> 调 text2sql_query("近7天订单金额", schema)  # 生成 SELECT ... 
+  └─> 调 execute_sql_query(SQL)                  # 真正执行
   └─>（若用户要画图）调 high_charts_json(数字, 类型)  # 生成图表配置
   └─> 模型汇总，输出最终答案（含数据来源表 / 计算过程 / 查询结果 / 结论）
 ```
@@ -190,12 +190,12 @@ context += trim_messages(state.messages)           # 裁剪后的历史（含本
 
 ## 7. SQL 真正执行时会发生什么（多层防护）
 
-`execute_sqlite_query`（[tools/tools_execute_sqlite.py](../tools/tools_execute_sqlite.py)）不是裸跑 SQL，而是层层设防：
+`execute_sql_query`（[tools/tools_execute_sql.py](../tools/tools_execute_sql.py)）不是裸跑 SQL，而是层层设防：
 
 1. **只读白名单** `ensure_read_only_query`：写语句 / 多语句直接拒绝（防删库改库）。
-2. **表级权限闸门**（新增，[tools/access_control.py](../tools/access_control.py)）：用 SQLite `set_authorizer` 在引擎层拦截对未授权表的读取，JOIN/子查询/CTE 里的越权表也拦得住。
-3. **执行计划预检**：`EXPLAIN QUERY PLAN` 拦笛卡尔积、大表全扫。
-4. **执行中超时**：看门狗线程 + VM 指令数兜底，慢查询被中断。
+2. **表级权限闸门**（[tools/access_control.py](../tools/access_control.py)）：用 sqlglot 解析 SQL 文本做表级白名单校验（fail-closed），JOIN/子查询/CTE 里的越权表也拦得住。
+3. **执行计划预检**：`EXPLAIN (FORMAT JSON)` 拦大表全扫、高成本、嵌套循环膨胀。
+4. **执行中超时**：PostgreSQL 服务端 `statement_timeout`，慢查询被服务端 kill。
 5. **结果截断**：行数 + 字节数双重截断，防止撑爆模型上下文。
 
 工具返回的 `{"status": "success"/"too_large"/"error", "result": ...}` 会作为 `ToolMessage` 回给模型；`AgentToolExecutor` 还会按错误类型分类（临时错误重试、慢查询让模型改写、权限错误直接终止等）。
@@ -221,8 +221,8 @@ Agent 跑完后，`stream_agent_response` 从图的最终状态里取**最后一
               ├─ create_agent 建 LangGraph 图
               ├─ 后台线程 invoke： llm_agent ⇄ tools 循环
               │      ├─ LLM 决策调工具
-              │      ├─ database_schema_rag / text2sqlite_query / execute_sqlite_query / high_charts_json
-              │      └─ execute_sqlite_query：只读 + 表级权限 + 执行计划 + 超时 + 截断
+              │      ├─ database_schema_rag / text2sql_query / execute_sql_query / high_charts_json
+              │      └─ execute_sql_query：只读 + 表级权限 + 执行计划 + 超时 + 截断
               ├─ 主循环推 token → SSE response 事件
               └─ 结束：取最终 AIMessage → persist 记忆 → finished=True
 ```

@@ -97,7 +97,7 @@ def _recursive_find_query(obj, depth=0):
 
 
 def _extract_pred_sql(messages):
-    """从图状态取「最后一条」由 execute_sqlite_query 实际执行的 SQL。"""
+    """从图状态取「最后一条」由 execute_sql_query 实际执行的 SQL。"""
     from langchain_core.messages import ToolMessage
     sqls = []
     for m in messages:

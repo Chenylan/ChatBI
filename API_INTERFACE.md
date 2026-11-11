@@ -567,9 +567,10 @@ if len(prompt) > 500:
 tools = [
     retriever_tool,        # 数据库 Schema RAG 检索
     search,                # DuckDuckGo 搜索
-    text2sqlite_tool,      # 自然语言转 SQL
+    text2sql_tool,         # 自然语言转 SQL
     highcharts_tool,       # 生成 Highcharts 图表配置
-    execute_sqlite_query,  # 执行 SQLite 查询
+    execute_sql_query,     # 执行 PostgreSQL 查询
+    export_artifacts_tool, # 导出产物
 ] + mcp_tools             # MCP 工具（如时间工具）
 ```
 
@@ -592,7 +593,7 @@ tools = [
 **ToolMessage**:
 ```python
 ToolMessage(
-    name="execute_sqlite_query",
+    name="execute_sql_query",
     content='{"results": [...]}',
     tool_call_id="call_123"
 )
@@ -681,8 +682,8 @@ config = {
 | `main.py` | Streamlit 前端入口（已弃用） |
 | `ui/sqlitechat_ui.py` | Streamlit UI 组件（已弃用） |
 | `tools/tools_rag.py` | RAG 工具 |
-| `tools/tools_text2sqlite.py` | 文本转 SQL 工具 |
-| `tools/tools_execute_sqlite.py` | SQL 执行工具 |
+| `tools/tools_text2sql.py` | 文本转 SQL 工具 |
+| `tools/tools_execute_sql.py` | SQL 执行工具 |
 | `tools/tools_charts.py` | 图表生成工具 |
 
 ---

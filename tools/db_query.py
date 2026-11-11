@@ -1,6 +1,6 @@
 """数据库无关的 SQL 查询工具基类，及 PostgreSQL / MySQL 适配实现。
 
-与 tools/tools_execute_sqlite.py 的差异：SQLite 是嵌入式单进程、没有服务端，
+与已废弃的 SQLite 实现的差异：SQLite 是嵌入式单进程、没有服务端，
 超时只能靠「看门狗线程 + conn.interrupt()」在客户端模拟。而 PostgreSQL / MySQL 是
 客户端-服务器架构，超时由**服务端原生执行并真正杀掉查询**：
 
@@ -54,7 +54,7 @@ def is_db_timeout(e: Exception) -> bool:
 def _truncate_by_bytes(rows: List[tuple], max_bytes: int) -> Tuple[List[tuple], bool]:
     """按序列化字节数截断结果行，避免撑爆 LLM 上下文（比单纯行数更贴近 token 预算）。
 
-    与 tools_execute_sqlite._truncate_by_bytes 逻辑一致，这里独立实现保持模块自包含。
+    与旧 SQLite 实现的 _truncate_by_bytes 逻辑一致，这里独立实现保持模块自包含。
     返回 (截断后的行, 是否发生了截断)。
     """
     out, total = [], 0
@@ -378,6 +378,12 @@ class PostgresQueryTool(BaseSqlQueryTool):
 
     # 嵌套循环关联的估算行数超过该值即视为「结果膨胀」风险（笛卡尔积的典型表现）
     ROW_EXPLOSION_LIMIT = 1_000_000
+
+    def __init__(self, **conn_params):
+        super().__init__(**conn_params)
+        # PG 的表在 schema 里（默认 public），表级权限解析/比对按 schema 名对齐，
+        # 而不是按 dbname（BaseSqlQueryTool 默认取 dbname）。业务表、权限表都放 public。
+        self.default_schema = conn_params.get("schema", "public")
 
     def _connect(self):
         try:

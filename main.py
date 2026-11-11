@@ -90,7 +90,7 @@ user_options = {
     "bob（支付/交易/订单/商品）": "bob",
 }
 user_label = st.selectbox("当前用户（表级权限）", options=list(user_options.keys()), index=0)
-current_user.set(user_options[user_label])  # 注入身份，供 execute_sqlite_query 做权限校验
+current_user.set(user_options[user_label])  # 注入身份，供 execute_sql_query 做权限校验
 
 if "assistant_response_processed" not in st.session_state:
     st.session_state["assistant_response_processed"] = True  # Initialize to True

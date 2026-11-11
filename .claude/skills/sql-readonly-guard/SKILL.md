@@ -37,7 +37,7 @@ description: 给任何「Agent/LLM 会执行 SQL」的工具加上 fail-closed �
 
 - 白名单守卫（零依赖）：[tools/db_query.py:68-227](../../../tools/db_query.py#L68-L227)
 - 三层执行防护的数据库无关基类 + PG/MySQL 适配：[tools/db_query.py:229-459](../../../tools/db_query.py#L229-L459)
-- SQLite 具体工具（看门狗超时 + progress_handler + 截断）：[tools/tools_execute_sqlite.py](../../../tools/tools_execute_sqlite.py)
+- PG 查询工具（接入基类 + statement_timeout + EXPLAIN JSON 预检 + 截断）：[tools/tools_execute_sql.py](../../../tools/tools_execute_sql.py)
 
 ## 验证
 

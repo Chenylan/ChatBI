@@ -35,55 +35,55 @@ METRICS: dict[str, MetricDef] = {
         canonical="销售毛利率",
         specific_aliases=["gross margin"],
         formula="毛利额 ÷ 销售收入",
-        sql_expr="SUM(毛利额) / SUM(销售收入)",
+        sql_expr="SUM(gross_profit) / SUM(sales_revenue)",
         default=True,
     ),
     "成本毛利率": MetricDef(
         canonical="成本毛利率",
         formula="毛利额 ÷ 采购成本",
-        sql_expr="SUM(毛利额) / SUM(采购成本)",
+        sql_expr="SUM(gross_profit) / SUM(purchase_cost)",
     ),
     # ---- 收入 ----
     "销售收入": MetricDef(
         canonical="销售收入",
         specific_aliases=["销售额", "营业额"],
-        formula="PAYMENTS.销售收入（订单销售金额，不含退款）",
-        sql_expr="SUM(销售收入)",
+        formula="PAYMENTS.sales_revenue（订单销售金额，不含退款）",
+        sql_expr="SUM(sales_revenue)",
         default=True,
     ),
     "实收金额": MetricDef(
         canonical="实收金额",
         specific_aliases=["实际到账"],
-        formula="PAYMENTS.实收金额（扣除退款/折扣后）",
-        sql_expr="SUM(实收金额)",
+        formula="PAYMENTS.actual_received_amount（扣除退款/折扣后）",
+        sql_expr="SUM(actual_received_amount)",
     ),
     # ---- 成本 ----
     "销售成本": MetricDef(
         canonical="销售成本",
         specific_aliases=["营业成本"],
-        formula="PAYMENTS.销售成本（销售环节成本，含运费/销售费用）",
-        sql_expr="SUM(销售成本)",
+        formula="PAYMENTS.sales_cost（销售环节成本，含运费/销售费用）",
+        sql_expr="SUM(sales_cost)",
         default=True,
     ),
     "采购成本": MetricDef(
         canonical="采购成本",
         specific_aliases=["进货成本"],
-        formula="PAYMENTS.采购成本（商品采购/进货成本）",
-        sql_expr="SUM(采购成本)",
+        formula="PAYMENTS.purchase_cost（商品采购/进货成本）",
+        sql_expr="SUM(purchase_cost)",
     ),
     # ---- 利润 ----
     "毛利额": MetricDef(
         canonical="毛利额",
         specific_aliases=["毛利润"],
         formula="销售收入 − 采购成本",
-        sql_expr="SUM(毛利额)",
+        sql_expr="SUM(gross_profit)",
         default=True,
     ),
     "净利润": MetricDef(
         canonical="净利润",
         specific_aliases=["纯利润"],
         formula="实收金额 − 销售成本",
-        sql_expr="SUM(净利润)",
+        sql_expr="SUM(net_profit)",
     ),
 }
 

@@ -7,19 +7,17 @@
   之后前端页面的增删改都落库，成为唯一数据源（source of truth）。
 - agent 侧的 detect_ambiguous / format_metric_dict 通过 load_merged() 读取合并后的口径，
   因此页面上的修改会实时生效（本进程内带缓存，写操作会失效缓存）。
+
+存储从 SQLite 迁移到 PostgreSQL（public schema）。
 """
 import json
-import os
-import sqlite3
 import threading
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-# 项目根目录（metrics/store.py -> metrics/ -> 项目根）
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# 口径库文件路径，可用环境变量 METRICS_DB_PATH 覆盖（默认放在 tools/ 下，与权限库同目录）
-METRICS_DB_PATH = os.getenv("METRICS_DB_PATH", str(_PROJECT_ROOT / "tools" / "metrics.db"))
+import psycopg2
+
+from tools.pg import pg_conn_params
 
 _META_SEED_KEY = "seeded"
 
@@ -32,7 +30,7 @@ CREATE TABLE IF NOT EXISTS metric_definitions (
     group_name   TEXT NOT NULL DEFAULT '',  -- 所属通用触发词（如「毛利率」），用于歧义检测分组
     is_default   INTEGER NOT NULL DEFAULT 0,
     is_builtin   INTEGER NOT NULL DEFAULT 0,
-    updated_at   REAL NOT NULL
+    updated_at   DOUBLE PRECISION NOT NULL
 )
 """
 
@@ -42,9 +40,9 @@ _CACHE: Dict[str, Optional[object]] = {"metrics": None, "triggers": None}
 _CACHE_LOCK = threading.Lock()
 
 
-def _connect() -> sqlite3.Connection:
-    """打开一个新的 SQLite 连接（每次操作独立连接，避免跨线程共享连接）。"""
-    return sqlite3.connect(METRICS_DB_PATH)
+def _connect():
+    """打开一个新的 PostgreSQL 连接（每次操作独立连接，避免跨线程共享连接）。"""
+    return psycopg2.connect(**pg_conn_params())
 
 
 def _invalidate_cache() -> None:
@@ -56,25 +54,29 @@ def _invalidate_cache() -> None:
 
 def _init(seed: bool = True) -> None:
     """建表 +（首次）写入内置口径。"""
-    os.makedirs(Path(METRICS_DB_PATH).parent, exist_ok=True)
     conn = _connect()
     try:
-        conn.execute(_SCHEMA)
-        conn.execute("CREATE TABLE IF NOT EXISTS metrics_meta (key TEXT PRIMARY KEY, value TEXT)")
+        cur = conn.cursor()
+        cur.execute(_SCHEMA)
+        cur.execute("CREATE TABLE IF NOT EXISTS metrics_meta (key TEXT PRIMARY KEY, value TEXT)")
         conn.commit()
+        cur.close()
         if seed:
             _seed_if_needed(conn)
     finally:
         conn.close()
 
 
-def _seed_if_needed(conn: sqlite3.Connection) -> None:
+def _seed_if_needed(conn) -> None:
     """只在从未 seed 过时，把内置 METRICS + GENERIC_TRIGGERS 写入一次（用 meta 标记）。
 
     用 meta 标记而非「表为空」判断，是为了保证：用户把内置口径都删掉后，不会在下次请求时又被自动加回来。
     """
-    row = conn.execute("SELECT value FROM metrics_meta WHERE key = ?", (_META_SEED_KEY,)).fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM metrics_meta WHERE key = %s", (_META_SEED_KEY,))
+    row = cur.fetchone()
     if row and row[0] == "1":
+        cur.close()
         return
 
     # 延迟导入，避免与 definitions.py 形成顶层循环依赖（definitions 不会在顶层 import store）
@@ -88,11 +90,12 @@ def _seed_if_needed(conn: sqlite3.Connection) -> None:
 
     now = time.time()
     for canonical, m in METRICS.items():
-        conn.execute(
+        cur.execute(
             """
-            INSERT OR IGNORE INTO metric_definitions
+            INSERT INTO metric_definitions
                 (canonical, aliases, formula, sql_expr, group_name, is_default, is_builtin, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (canonical) DO NOTHING
             """,
             (
                 canonical,
@@ -105,11 +108,12 @@ def _seed_if_needed(conn: sqlite3.Connection) -> None:
                 now,
             ),
         )
-    conn.execute(
-        "INSERT INTO metrics_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    cur.execute(
+        "INSERT INTO metrics_meta (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
         (_META_SEED_KEY, "1"),
     )
     conn.commit()
+    cur.close()
 
 
 def _row_to_metric(row: tuple) -> dict:
@@ -136,13 +140,16 @@ def list_metrics() -> List[dict]:
     _init(seed=True)
     conn = _connect()
     try:
-        rows = conn.execute(
+        cur = conn.cursor()
+        cur.execute(
             """
             SELECT canonical, aliases, formula, sql_expr, group_name, is_default, is_builtin, updated_at
             FROM metric_definitions
             ORDER BY is_builtin DESC, canonical
             """
-        ).fetchall()
+        )
+        rows = cur.fetchall()
+        cur.close()
     finally:
         conn.close()
     return [_row_to_metric(r) for r in rows]
@@ -167,12 +174,13 @@ def upsert_metric(
     _init(seed=True)
     conn = _connect()
     try:
-        conn.execute(
+        cur = conn.cursor()
+        cur.execute(
             """
             INSERT INTO metric_definitions
                 (canonical, aliases, formula, sql_expr, group_name, is_default, is_builtin, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?)
-            ON CONFLICT(canonical) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, 0, %s)
+            ON CONFLICT (canonical) DO UPDATE SET
                 aliases    = excluded.aliases,
                 formula    = excluded.formula,
                 sql_expr   = excluded.sql_expr,
@@ -191,6 +199,7 @@ def upsert_metric(
             ),
         )
         conn.commit()
+        cur.close()
     finally:
         conn.close()
 
@@ -210,9 +219,11 @@ def delete_metric(canonical: str) -> bool:
     _init(seed=True)
     conn = _connect()
     try:
-        cur = conn.execute("DELETE FROM metric_definitions WHERE canonical = ?", (canonical,))
-        conn.commit()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM metric_definitions WHERE canonical = %s", (canonical,))
         deleted = cur.rowcount > 0
+        conn.commit()
+        cur.close()
     finally:
         conn.close()
 
@@ -237,9 +248,12 @@ def load_merged():
         _init(seed=True)
         conn = _connect()
         try:
-            rows = conn.execute(
+            cur = conn.cursor()
+            cur.execute(
                 "SELECT canonical, aliases, formula, sql_expr, group_name, is_default FROM metric_definitions"
-            ).fetchall()
+            )
+            rows = cur.fetchall()
+            cur.close()
         finally:
             conn.close()
 

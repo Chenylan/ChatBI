@@ -1,7 +1,7 @@
 """表级访问控制（ACL）：让「自助问数」的权限与一张用户维度表对齐。
 
 背景：
-    ChatBI 的 LLM 会自主生成 SQL 并调用 execute_sqlite_query 查询业务库。
+    ChatBI 的 LLM 会自主生成 SQL 并调用 execute_sql_query 查询业务库。
     如果没有约束，任何用户都能查到任何表。本模块提供「用户 → 可查询的库/表」的
     白名单校验，并把它接到 SQL 执行入口，使自助问数的权限与维度表完全一致。
 
@@ -23,6 +23,10 @@ import sqlite3
 from contextvars import ContextVar
 from typing import Dict, Optional, Set, Tuple
 
+import psycopg2
+
+from tools.pg import pg_conn_params
+
 # ==================== 配置 ====================
 
 # 是否启用表级权限。生产环境务必保持 true；本地调试 / 跑旧样例时可设
@@ -34,10 +38,8 @@ ENFORCE_ACL = os.getenv("ENABLE_TABLE_ACL", "true").lower() in ("1", "true", "ye
 # 默认 "anonymous"：未识别用户时 fail-closed（一张表都不放行），宁可拒绝也不越权。
 current_user: ContextVar[str] = ContextVar("chatbi_current_user", default="anonymous")
 
-# 权限维度表所在 SQLite 文件。与业务库 example.db 分开存放，
-# 避免业务查询直接摸到权限表；生产环境可把 ACL_DB_PATH 指向你们真正的权限库。
-_current_file_dir = os.path.dirname(os.path.abspath(__file__))
-ACL_DB_PATH = os.getenv("ACL_DB_PATH", os.path.join(_current_file_dir, "user_permissions.db"))
+# 权限维度表存放在 PostgreSQL（与业务库同一个 PG 实例，public schema）。
+# database_name 字段在 PG 下存 schema 名（public）。
 
 # 权限维度表名与建表 DDL。字段即「用户 × 库 × 表」三要素；
 # 真实环境若已有自己的用户维度表（字段名不同），只需改 get_allowed_tables() 里的
@@ -45,9 +47,9 @@ ACL_DB_PATH = os.getenv("ACL_DB_PATH", os.path.join(_current_file_dir, "user_per
 ACL_TABLE = "user_table_acl"
 ACL_DDL = f"""
 CREATE TABLE IF NOT EXISTS {ACL_TABLE} (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    id            SERIAL PRIMARY KEY,
     user_id       TEXT NOT NULL,             -- 用户标识（工号 / 账号）
-    database_name TEXT NOT NULL,             -- 数据库名（SQLite 固定为 main；PG/MySQL 用 schema 名）
+    database_name TEXT NOT NULL,             -- schema 名（PG 下为 public）
     table_name    TEXT NOT NULL,             -- 表名
     UNIQUE (user_id, database_name, table_name)
 )
@@ -57,36 +59,38 @@ CREATE TABLE IF NOT EXISTS {ACL_TABLE} (
 # 便于直接演示「有权限的表能查、没权限的表被拦」。
 SAMPLE_ACL = [
     # alice：业务分析，可查订单 / 客户 / 商品 / 用户行为
-    ("alice", "main", "CUSTOMER_DETAILS"),
-    ("alice", "main", "ORDER_DETAILS"),
-    ("alice", "main", "PRODUCTS"),
-    ("alice", "main", "USER_INTERACTIONS"),
+    ("alice", "public", "CUSTOMER_DETAILS"),
+    ("alice", "public", "ORDER_DETAILS"),
+    ("alice", "public", "PRODUCTS"),
+    ("alice", "public", "USER_INTERACTIONS"),
     # bob：财务，可查支付 / 交易 / 订单 / 商品
-    ("bob", "main", "ORDER_DETAILS"),
-    ("bob", "main", "PAYMENTS"),
-    ("bob", "main", "TRANSACTIONS"),
-    ("bob", "main", "PRODUCTS"),
+    ("bob", "public", "ORDER_DETAILS"),
+    ("bob", "public", "PAYMENTS"),
+    ("bob", "public", "TRANSACTIONS"),
+    ("bob", "public", "PRODUCTS"),
     # admin：全表可查（演示用）
-    ("admin", "main", "CUSTOMER_DETAILS"),
-    ("admin", "main", "ORDER_DETAILS"),
-    ("admin", "main", "PAYMENTS"),
-    ("admin", "main", "PRODUCTS"),
-    ("admin", "main", "TRANSACTIONS"),
-    ("admin", "main", "USER_INTERACTIONS"),
+    ("admin", "public", "CUSTOMER_DETAILS"),
+    ("admin", "public", "ORDER_DETAILS"),
+    ("admin", "public", "PAYMENTS"),
+    ("admin", "public", "PRODUCTS"),
+    ("admin", "public", "TRANSACTIONS"),
+    ("admin", "public", "USER_INTERACTIONS"),
 ]
 
 
 # ==================== 数据层：读写权限维度表 ====================
 
-def _connect() -> sqlite3.Connection:
-    """打开权限库连接（只在本模块内部使用，不挂 authorizer）。"""
-    return sqlite3.connect(ACL_DB_PATH)
+def _connect():
+    """打开权限库连接（psycopg2，只在本模块内部使用，不挂 authorizer）。"""
+    return psycopg2.connect(**pg_conn_params())
 
 
-def _ensure_table(conn: sqlite3.Connection) -> None:
+def _ensure_table(conn) -> None:
     """幂等建表：首次使用时自动建好 user_table_acl，不会报「表不存在」。"""
-    conn.execute(ACL_DDL)
+    cur = conn.cursor()
+    cur.execute(ACL_DDL)
     conn.commit()
+    cur.close()
 
 
 def init_permission_db(seed: bool = True) -> None:
@@ -99,18 +103,20 @@ def init_permission_db(seed: bool = True) -> None:
     try:
         _ensure_table(conn)
         if seed:
-            conn.executemany(
-                f"INSERT OR IGNORE INTO {ACL_TABLE} (user_id, database_name, table_name) "
-                f"VALUES (?, ?, ?)",
+            cur = conn.cursor()
+            cur.executemany(
+                f"INSERT INTO {ACL_TABLE} (user_id, database_name, table_name) "
+                f"VALUES (%s, %s, %s) ON CONFLICT (user_id, database_name, table_name) DO NOTHING",
                 SAMPLE_ACL,
             )
             conn.commit()
+            cur.close()
     finally:
         conn.close()
 
 
 def get_allowed_tables(user_id: Optional[str] = None) -> Set[Tuple[str, str]]:
-    """查询某用户有权访问的 (库名, 表名) 集合。
+    """查询某用户有权访问的 (schema 名, 表名) 集合。
 
     未指定 user_id 时用 current_user（当前请求用户）；查不到任何授权则返回空集，
     上层据此 fail-closed（一张表都不放行）。
@@ -122,13 +128,16 @@ def get_allowed_tables(user_id: Optional[str] = None) -> Set[Tuple[str, str]]:
     conn = _connect()
     try:
         _ensure_table(conn)
-        rows = conn.execute(
-            f"SELECT database_name, table_name FROM {ACL_TABLE} WHERE user_id = ?", (uid,)
-        ).fetchall()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT database_name, table_name FROM {ACL_TABLE} WHERE user_id = %s", (uid,)
+        )
+        rows = cur.fetchall()
+        cur.close()
     finally:
         conn.close()
 
-    # 统一小写：SQLite 表名大小写不敏感，避免大小写差异导致误判
+    # 统一小写：PG 未加引号标识符会折叠小写，避免大小写差异导致误判
     return {(db.lower(), tbl.lower()) for db, tbl in rows}
 
 
@@ -236,7 +245,7 @@ def check_query_access(
 
 if __name__ == "__main__":
     init_permission_db(seed=True)
-    print(f"已初始化权限维度表：{ACL_DB_PATH}")
+    print(f"已初始化权限维度表：{ACL_TABLE}（PostgreSQL public schema）")
     print(f"示例授权（{ACL_TABLE}）：")
     for uid in ("alice", "bob", "admin"):
         tables = sorted(t for _, t in get_allowed_tables(uid))

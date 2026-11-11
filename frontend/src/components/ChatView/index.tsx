@@ -19,6 +19,17 @@ import { Modal } from "antd";
 
 const STORAGE_KEY_PREFIX = "chat_view_history";
 
+// 当前用户标识：后端表级权限（user_table_acl）按这个字段校验。
+// 暂从 localStorage 读取，默认 admin（全表可查），先保证查数跑通；
+// 想验证权限限制可在浏览器控制台切换：localStorage.setItem('chatbi_user_id','alice') 后刷新。
+// 可选值见 tools/access_control.py 的 SAMPLE_ACL：alice / bob / admin。
+const getCurrentUserId = () => {
+  if (typeof window !== "undefined") {
+    return window.localStorage.getItem("chatbi_user_id") || "admin";
+  }
+  return "admin";
+};
+
 const buildHistoryKey = (type: "general" | "data") =>
   `${STORAGE_KEY_PREFIX}:${type}`;
 
@@ -84,6 +95,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
       session_id: sessionId,
       request_id: requestId,
       model: "qwen-plus", // 可以根据需要选择模型
+      user_id: getCurrentUserId(),
     };
     const handleMessage = (data: any) => {
       try {
@@ -316,6 +328,7 @@ const ChatView: GenieType.FC<Props> = (props) => {
       session_id: sessionId,
       request_id: requestId,
       model: "qwen-plus",
+      user_id: getCurrentUserId(),
     };
     let currentChat = {
       query: inputInfo.message,

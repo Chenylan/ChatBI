@@ -94,8 +94,8 @@ OPENAI_API_BASE_URL=your_base_url_here  # 可选
 cd tools
 python generate_sqlite_data.py
 
-# 生成向量数据库（用于 RAG）
-python ingest_chromadb.py
+# 生成向量索引（写入 PostgreSQL pgvector）
+python ingest_pgvector.py
 ```
 
 ## 运行项目
